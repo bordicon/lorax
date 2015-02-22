@@ -17,13 +17,12 @@ import logging.handlers as handlers
 logger = logging.getLogger(__name__)
 
 syslog_handler = None
-def to_syslog(address=('localhost', 438), facility=None):
+def to_syslog(address=('localhost', 514), facility=syslog.LOG_USER):
 	global syslog_handler
 	if syslog_handler:
 		syslog_handler.close()
 		logger.removeHandler(syslog_handler)
-	syslog_handler = handlers.SysLogHandler(address=address,
-											facility=syslog.LOG_USER) 
+	syslog_handler = handlers.SysLogHandler(address=address, facility=facility) 
 	logger.addHandler(syslog_handler)
 	logger.setLevel(logging.DEBUG)
 
@@ -51,7 +50,7 @@ def _extract(msg=None, level=None, **kwargs):
 			else:
 				kwargs['_msg'] += str(fgmnt)
 	return ": @cee: %s"%json.dumps(kwargs)
-format
+
 def debug(msg=None, **kwargs):
 	logger.debug(_extract(msg=msg,level='debug',**kwargs))
 def info(msg=None, **kwargs):
