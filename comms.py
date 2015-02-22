@@ -1,5 +1,10 @@
 #!/usr/bin/python
 
+#TODO: .commsrc
+#TODO: globals and thread locals
+#TODO: with contexts
+#TODO: multiline splitting
+
 import re
 import inspect
 
