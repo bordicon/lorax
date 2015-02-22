@@ -35,6 +35,7 @@ def to_stdout(level=logging.INFO):
 interpreter_global = {}
 thread_local = threading.local()
 def _emit(msg=None, level=None, **kwargs):
+	"""_emit must be called by an intermediary function (.f_back.f_back)"""
 	log = {}
 	log.update(interpreter_global)
 	log.update(thread_local.__dict__)
@@ -45,8 +46,8 @@ def _emit(msg=None, level=None, **kwargs):
 	if isinstance(msg, BaseException):
 		log['_exception'] = traceback.format_exc(msg)
 	elif msg:
-		caller_globals = inspect.currentframe().f_back.f_globals
-		caller_locals  = inspect.currentframe().f_back.f_locals
+		caller_globals = inspect.currentframe().f_back.f_back.f_globals
+		caller_locals  = inspect.currentframe().f_back.f_back.f_locals
 		for fgmnt in re.split(r"({[^{}]+})", msg):
 			match = re.match(r"{(.*)}", fgmnt)
 			if match:
