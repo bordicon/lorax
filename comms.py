@@ -6,6 +6,7 @@
 #TODO: multiline splitting
 
 import re
+import json
 import inspect
 
 def emit(msg=None, **kwargs):
@@ -21,7 +22,7 @@ def emit(msg=None, **kwargs):
 			kwargs['msg'] += str(kwargs[key])
 		else:
 			kwargs['msg'] += str(fgmnt)
-	return kwargs
+	return "@cee: %s"%json.dumps(kwargs)
 
 def debug(msg=None, **kwargs):
 	emit(msg=msg,level='debug',**kwargs)
