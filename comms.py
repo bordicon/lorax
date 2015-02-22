@@ -33,11 +33,11 @@ def to_stdout(level=logging.INFO):
 	logger.addHandler(handler)
 
 def _extract(msg=None, level=None, **kwargs):
-	kwargs['msg'] = ""
+	kwargs['_msg'] = ""
 	if level:
-		kwargs['level'] = level
+		kwargs['_level'] = level
 	if isinstance(msg, BaseException):
-		kwargs['exception'] = traceback.format_exc(msg)
+		kwargs['_exception'] = traceback.format_exc(msg)
 	elif msg:
 		caller_globals = inspect.currentframe().f_back.f_globals
 		caller_locals  = inspect.currentframe().f_back.f_locals
@@ -47,9 +47,9 @@ def _extract(msg=None, level=None, **kwargs):
 				key = match.group(1)
 				if key not in kwargs:
 					kwargs[key] = eval(key, caller_globals, caller_locals)
-				kwargs['msg'] += str(kwargs[key])
+				kwargs['_msg'] += str(kwargs[key])
 			else:
-				kwargs['msg'] += str(fgmnt)
+				kwargs['_msg'] += str(fgmnt)
 	return ": @cee: %s"%json.dumps(kwargs)
 format
 def debug(msg=None, **kwargs):
