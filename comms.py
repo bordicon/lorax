@@ -11,33 +11,38 @@ import socket
 import syslog
 import inspect
 import logging
-import logging.handlers
+import traceback
+import logging.handlers as handlers
 
 logger = logging.getLogger(__name__)
 
-handler = None
+syslog_handler = None
 def to_syslog(address=('localhost', 438), facility=None):
-	global handler
-	if handler:
-		handler.close()
-		logger.removeHandler(handler)
-	handler = logging.handlers.SysLogHandler(address=address, facility=facility)
-	logger.addHandler(handler)
+	global syslog_handler
+	if syslog_handler:
+		syslog_handler.close()
+		logger.removeHandler(syslog_handler)
+	syslog_handler = handlers.SysLogHandler(address=address,
+											facility=syslog.LOG_USER) 
+	logger.addHandler(syslog_handler)
 	logger.setLevel(logging.DEBUG)
 
 def _extract(msg=None, **kwargs):
-	caller_globals = inspect.currentframe().f_back.f_globals
-	caller_locals  = inspect.currentframe().f_back.f_locals
 	kwargs['msg'] = ""
-	for fgmnt in re.split(r"({[^{}]+})", msg):
-		match = re.match(r"{(.*)}", fgmnt)
-		if match:
-			key = match.group(1)
-			if key not in kwargs:
-				kwargs[key] = eval(key, caller_globals, caller_locals)
-			kwargs['msg'] += str(kwargs[key])
-		else:
-			kwargs['msg'] += str(fgmnt)
+	if isinstance(msg, BaseException):
+		kwargs['exception'] = traceback.format_exc(msg)
+	elif msg:
+		caller_globals = inspect.currentframe().f_back.f_globals
+		caller_locals  = inspect.currentframe().f_back.f_locals
+		for fgmnt in re.split(r"({[^{}]+})", msg):
+			match = re.match(r"{(.*)}", fgmnt)
+			if match:
+				key = match.group(1)
+				if key not in kwargs:
+					kwargs[key] = eval(key, caller_globals, caller_locals)
+				kwargs['msg'] += str(kwargs[key])
+			else:
+				kwargs['msg'] += str(fgmnt)
 	return ": @cee: %s"%json.dumps(kwargs)
 format
 def debug(msg=None, **kwargs):
