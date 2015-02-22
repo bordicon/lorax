@@ -16,6 +16,7 @@ import traceback
 import logging.handlers as handlers
 
 logger = logging.getLogger(__name__)
+logger.setLevel(logging.DEBUG)
 
 syslog_handler = None
 def to_syslog(address=('localhost', 514), facility=syslog.LOG_USER):
@@ -25,11 +26,10 @@ def to_syslog(address=('localhost', 514), facility=syslog.LOG_USER):
 		logger.removeHandler(syslog_handler)
 	syslog_handler = handlers.SysLogHandler(address=address, facility=facility) 
 	logger.addHandler(syslog_handler)
-	logger.setLevel(logging.DEBUG)
 
 def to_stdout(level=logging.INFO):
 	handler = logging.StreamHandler()
-	handler.setLevel(level)
+	logger.setLevel(level)
 	logger.addHandler(handler)
 
 interpreter_global = {}
