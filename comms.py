@@ -11,6 +11,7 @@ import socket
 import syslog
 import inspect
 import logging
+import threading
 import traceback
 import logging.handlers as handlers
 
@@ -31,12 +32,18 @@ def to_stdout(level=logging.INFO):
 	handler.setLevel(level)
 	logger.addHandler(handler)
 
-def _extract(msg=None, level=None, **kwargs):
-	kwargs['_msg'] = ""
+interpreter_global = {}
+thread_local = threading.local()
+def _emit(msg=None, level=None, **kwargs):
+	log = {}
+	log.update(interpreter_global)
+	log.update(thread_local.__dict__)
+	log.update(kwargs)
+	log['_msg'] = ""
 	if level:
-		kwargs['_level'] = level
+		log['_level'] = level
 	if isinstance(msg, BaseException):
-		kwargs['_exception'] = traceback.format_exc(msg)
+		log['_exception'] = traceback.format_exc(msg)
 	elif msg:
 		caller_globals = inspect.currentframe().f_back.f_globals
 		caller_locals  = inspect.currentframe().f_back.f_locals
@@ -44,20 +51,36 @@ def _extract(msg=None, level=None, **kwargs):
 			match = re.match(r"{(.*)}", fgmnt)
 			if match:
 				key = match.group(1)
-				if key not in kwargs:
-					kwargs[key] = eval(key, caller_globals, caller_locals)
-				kwargs['_msg'] += str(kwargs[key])
+				if key not in log:
+					log[key] = eval(key, caller_globals, caller_locals)
+				log['_msg'] += str(log[key])
 			else:
-				kwargs['_msg'] += str(fgmnt)
-	return ": @cee: %s"%json.dumps(kwargs)
+				log['_msg'] += str(fgmnt)
+	return ": @cee: %s"%json.dumps(log)
+
+def set_local(key, value):
+	setattr(thread_local, key, value)
+
+class local(object):
+	def __init__(self, fields):
+		self.old = thread_local
+		self.new = fields
+	def __enter__(self):
+		global thread_local
+		thread_local = threading.local()
+		for key, value in self.new.items():
+			setattr(thread_local, key, value)
+	def __exit__(self, type, value, traceback):
+		global thread_local
+		thread_local = self.old
 
 def debug(msg=None, **kwargs):
-	logger.debug(_extract(msg=msg,level='debug',**kwargs))
+	logger.debug(_emit(msg=msg,level='debug',**kwargs))
 def info(msg=None, **kwargs):
-	logger.info(_extract(msg=msg,level='info',**kwargs))
+	logger.info(_emit(msg=msg,level='info',**kwargs))
 def warn(msg=None, **kwargs):
-	logger.warn(_extract(msg=msg,level='warn',**kwargs))
+	logger.warn(_emit(msg=msg,level='warn',**kwargs))
 def error(msg=None, **kwargs):
-	logger.error(_extract(msg=msg,level='error',**kwargs))
+	logger.error(_emit(msg=msg,level='error',**kwargs))
 def fatal(msg=None, **kwargs):
-	logger.fatal(_extract(msg=msg,level='fatal',**kwargs))
+	logger.fatal(_emit(msg=msg,level='fatal',**kwargs))
