@@ -7,9 +7,25 @@
 
 import re
 import json
+import socket
+import syslog
 import inspect
+import logging
+import logging.handlers
 
-def emit(msg=None, **kwargs):
+logger = logging.getLogger(__name__)
+
+handler = None
+def to_syslog(address=('localhost', 438), facility=None):
+	global handler
+	if handler:
+		handler.close()
+		logger.removeHandler(handler)
+	handler = logging.handlers.SysLogHandler(address=address, facility=facility)
+	logger.addHandler(handler)
+	logger.setLevel(logging.DEBUG)
+
+def _extract(msg=None, **kwargs):
 	caller_globals = inspect.currentframe().f_back.f_globals
 	caller_locals  = inspect.currentframe().f_back.f_locals
 	kwargs['msg'] = ""
@@ -22,19 +38,15 @@ def emit(msg=None, **kwargs):
 			kwargs['msg'] += str(kwargs[key])
 		else:
 			kwargs['msg'] += str(fgmnt)
-	return "@cee: %s"%json.dumps(kwargs)
-
+	return ": @cee: %s"%json.dumps(kwargs)
+format
 def debug(msg=None, **kwargs):
-	emit(msg=msg,level='debug',**kwargs)
-
+	logger.debug(_extract(msg=msg,**kwargs))
 def info(msg=None, **kwargs):
-	emit(msg=msg,level='info',**kwargs)
-
+	logger.info(_extract(msg=msg,**kwargs))
 def warn(msg=None, **kwargs):
-	emit(msg=msg,level='warn',**kwargs)
-
+	logger.warn(_extract(msg=msg,**kwargs))
 def error(msg=None, **kwargs):
-	emit(msg=msg,level='error',**kwargs)
-
+	logger.error(_extract(msg=msg,**kwargs))
 def fatal(msg=None, **kwargs):
-	emit(msg=msg,level='fatal',**kwargs)
+	logger.fatal(_extract(msg=msg,**kwargs))
