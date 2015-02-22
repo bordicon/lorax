@@ -68,6 +68,8 @@ class local(object):
 	def __enter__(self):
 		global thread_local
 		thread_local = threading.local()
+		for key, value in self.old.__dict__.items():
+			setattr(thread_local, key, value)
 		for key, value in self.new.items():
 			setattr(thread_local, key, value)
 	def __exit__(self, type, value, traceback):
