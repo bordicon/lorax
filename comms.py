@@ -6,6 +6,7 @@
 #TODO: multiline splitting
 
 import re
+import sys
 import json
 import socket
 import syslog
@@ -17,20 +18,28 @@ import logging.handlers as handlers
 
 logger = logging.getLogger(__name__)
 logger.setLevel(logging.DEBUG)
+logger.addHandler(logging.NullHandler())
+logger.propagate = False
 
 syslog_handler = None
-def to_syslog(address=('localhost', 514), facility=syslog.LOG_USER):
+def log_to_syslog(address=('localhost', 514), facility=syslog.LOG_USER, level=logging.DEBUG):
 	global syslog_handler
 	if syslog_handler:
 		syslog_handler.close()
 		logger.removeHandler(syslog_handler)
 	syslog_handler = handlers.SysLogHandler(address=address, facility=facility) 
+	syslog_handler.setLevel(level)
 	logger.addHandler(syslog_handler)
 
-def to_stdout(level=logging.INFO):
-	handler = logging.StreamHandler()
-	logger.setLevel(level)
-	logger.addHandler(handler)
+stream_handler = None
+def log_to_stdout(level=logging.INFO, stream=sys.stdout):
+	global stream_handler
+	if stream_handler:
+		stream_handler.close()
+		logger.removeHandler(stream_handler)
+	stream_handler = logging.StreamHandler(stream)
+	stream_handler.setLevel(level)
+	logger.addHandler(stream_handler)
 
 #TODO: Reuse _emit instead of manual message fabrication
 _monitor_cache = threading.local()
@@ -39,8 +48,8 @@ def monitor(name, new_value, log_method='warn'):
 		setattr(_monitor_cache, name, None)
 	old_value = getattr(_monitor_cache, name)
 	if old_value != new_value:
-		msg = "%s changed from %s to %s"%(name, old_value, new_value)
-		getattr(logger, log_method)(": @cee: %s"%json.dumps({'_msg':msg, '_level':log_method}))
+		msg = {'_msg':"%s changed"%name, 'old':old_value, 'new':new_value}
+		getattr(logger, log_method)(": @cee: %s"%json.dumps(msg))
 	setattr(_monitor_cache, name, new_value)
 
 interpreter_global = {}
