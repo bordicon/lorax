@@ -32,6 +32,17 @@ def to_stdout(level=logging.INFO):
 	logger.setLevel(level)
 	logger.addHandler(handler)
 
+#TODO: Reuse _emit instead of manual message fabrication
+_monitor_cache = threading.local()
+def monitor(name, new_value, log_method='warn'):
+	if not hasattr(_monitor_cache, name):
+		setattr(_monitor_cache, name, None)
+	old_value = getattr(_monitor_cache, name)
+	if old_value != new_value:
+		msg = "%s changed from %s to %s"%(name, old_value, new_value)
+		getattr(logger, log_method)(": @cee: %s"%json.dumps({'_msg':msg, '_level':log_method}))
+	setattr(_monitor_cache, name, new_value)
+
 interpreter_global = {}
 thread_local = threading.local()
 def _emit(msg=None, level=None, **kwargs):
