@@ -48,7 +48,7 @@ def monitor(name, new_value, log_method='warn'):
 		setattr(_monitor_cache, name, None)
 	old_value = getattr(_monitor_cache, name)
 	if old_value != new_value:
-		msg = {'_msg':"%s changed"%name, 'old':old_value, 'new':new_value}
+		msg = {'_msg':"monitor: %s changed"%name, '_level':log_method, 'from':old_value, 'to':new_value}
 		getattr(logger, log_method)(": @cee: %s"%json.dumps(msg))
 	setattr(_monitor_cache, name, new_value)
 
