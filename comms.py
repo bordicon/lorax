@@ -10,6 +10,7 @@
 import re
 import sys
 import json
+import time
 import socket
 import syslog
 import inspect
@@ -63,6 +64,7 @@ def _emit(msg=None, level=None, **kwargs):
 	log.update(thread_local.__dict__)
 	log.update(kwargs)
 	log['_msg'] = ""
+	log['_time'] = time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())
 	if level:
 		log['_level'] = level
 	if isinstance(msg, BaseException):
