@@ -7,7 +7,7 @@ import pprint
 import argparse
 
 parser = argparse.ArgumentParser(description='filter and pretty print @cee-tagged json-structured rows from stdin')
-parser.add_argument('-o', '--any', nargs="*", help='line will match if any of the following are in the string', default=[])
+parser.add_argument('-o', '--any', nargs="*", help='line will match if any of the following are in the string')
 parser.add_argument('-a', '--all', nargs="*", help='line will match if all of the following are in the string', default=[])
 args = parser.parse_args()
 
@@ -22,12 +22,17 @@ def my_safe_repr(object, context, maxlevels, level):
     return pprint._safe_repr(object, context, maxlevels, level)
 printer.format = my_safe_repr
 
+if isinstance(args.any, basestring):
+	args.any = [args.any]
+if isinstance(args.all, basestring):
+	ars.all = [args.all]
+
 for line in iter(sys.stdin.readline, ''):
 	match = re.search(r'@cee: (.+)', line)
 	if not match:
 		continue
 	line = match.group(1)
-	if not any((re.search(r'%s'%tag, line) for tag in args.any)):
+	if args.any and not any((re.search(r'%s'%tag, line) for tag in args.any)):
 		continue
 	if not all((re.search(r'%s'%tag, line) for tag in args.all)):
 		continue
