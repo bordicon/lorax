@@ -1,5 +1,7 @@
 #!/usr/bin/python
 
+#TODO: rename "Lorax"?
+
 #TODO: .commsrc
 #TODO: globals and thread locals
 #TODO: with contexts
@@ -45,7 +47,7 @@ def log_to_stdout(level=logging.INFO, stream=sys.stdout):
 _monitor_cache = threading.local()
 def monitor(name, new_value, log_method='warn'):
 	if not hasattr(_monitor_cache, name):
-		setattr(_monitor_cache, name, None)
+		setattr(_monitor_cache, name, new_value)
 	old_value = getattr(_monitor_cache, name)
 	if old_value != new_value:
 		msg = {'_msg':"monitor: %s changed"%name, '_level':log_method, 'from':old_value, 'to':new_value}
