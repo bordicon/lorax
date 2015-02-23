@@ -1,7 +1,5 @@
 #!/usr/bin/python
 
-#TODO: rename "Lorax"?
-
 #TODO: .commsrc
 #TODO: globals and thread locals
 #TODO: with contexts
