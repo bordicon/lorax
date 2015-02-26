@@ -32,6 +32,7 @@ noticed_exception = False
 for line in iter(sys.stdin.readline, ''):
 	match = re.search(r'@cee: (.+)', line)
 	if not match:
+		print line
 		continue
 	line = match.group(1)
 	if args.any and not any((re.search(r'%s'%tag, line) for tag in args.any)):
