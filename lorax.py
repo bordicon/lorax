@@ -1,6 +1,6 @@
 #!/usr/bin/python
 
-#TODO: .commsrc
+#TODO: .loraxrc
 #TODO: globals and thread locals
 #TODO: with contexts
 #TODO: multiline splitting

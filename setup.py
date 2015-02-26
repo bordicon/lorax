@@ -7,6 +7,6 @@ setup(
 	author="Jesse Trutna",
 	author_email="jesse@spire.com",
 	data_files=[('/usr/local/bin', ['bin/lorax'])],
-	py_modules=['comms']
+	py_modules=['lorax']
 	)
 
