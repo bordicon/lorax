@@ -1,111 +1,219 @@
 #!/usr/bin/python
 
-#TODO: .loraxrc
-#TODO: globals and thread locals
-#TODO: with contexts
-#TODO: multiline splitting
+#TODO: See if it's worth conforming to CEE (https://fedorahosted.org/lumberjack/)
+#TODO: format/parse can be simplified further, but want to keep diff small.
+#TODO: Switch log_to_stdout to use unstructured formatter by default
+#TODO: Add timestamps to log_to_stdout default formatter
+#TODO: Add support for *args to logging calls to behave just like basestring#format
 
-import re
+import os
 import sys
 import json
-import time
+import string
 import socket
 import syslog
-import inspect
 import logging
 import threading
 import traceback
+from datetime import datetime
 import logging.handlers as handlers
 
+## Setup Globals
+# Python 2.6.6 doesn't have logging.NullHandler
+class NullHandler(logging.Handler):
+    def emit(self, record):
+        pass
+
+# logger to emit structured log events to
 logger = logging.getLogger(__name__)
 logger.setLevel(logging.DEBUG)
-logger.addHandler(logging.NullHandler())
+logger.addHandler(NullHandler())
 logger.propagate = False
 
-syslog_handler = None
-def log_to_syslog(address=('localhost', 514), facility=syslog.LOG_USER, level=logging.DEBUG):
-	global syslog_handler
-	if syslog_handler:
-		syslog_handler.close()
-		logger.removeHandler(syslog_handler)
-	syslog_handler = handlers.SysLogHandler(address=address, facility=facility) 
-	syslog_handler.setLevel(level)
-	logger.addHandler(syslog_handler)
+# Storage for attributes shared by all events in thread/process
+process_attributes = {}
+thread_attributes = threading.local()
 
-stream_handler = None
-def log_to_stdout(level=logging.INFO, stream=sys.stdout):
-	global stream_handler
-	if stream_handler:
-		stream_handler.close()
-		logger.removeHandler(stream_handler)
-	stream_handler = logging.StreamHandler(stream)
-	stream_handler.setLevel(level)
-	logger.addHandler(stream_handler)
+# Sadly, this is the simplest way NOT to log structured output.
+class UnstructuredFormatter(logging.Formatter):
+    def format(self, record):
+        return json.loads(record.msg)['_msg']
 
-#TODO: Reuse _emit instead of manual message fabrication
-_monitor_cache = threading.local()
-def monitor(name, new_value, log_method='warn'):
-	if not hasattr(_monitor_cache, name):
-		setattr(_monitor_cache, name, new_value)
-	old_value = getattr(_monitor_cache, name)
-	if old_value != new_value:
-		msg = {'_msg':"monitor: %s changed"%name, '_level':log_method, 'from':old_value, 'to':new_value}
-		getattr(logger, log_method)(": @cee: %s"%json.dumps(msg))
-	setattr(_monitor_cache, name, new_value)
+# A formatter for logging unstructured messages with a timestamp
+class UnstructuredTimestampFormatter(logging.Formatter):
+    def format(self, record):
+        record = json.loads(record.msg)
+        record['_time'] = self.reformatTime(record['_time'])
+        return '\n[%s : %s] %s ' % (
+            record['_time'], 
+            record['_level'].upper(), 
+            record['_msg'])
+    def reformatTime(self, record_time):
+        timestamp = datetime.strptime(record_time[0:19],"%Y-%m-%dT%H:%M:%S")
+        return timestamp.strftime("%Y%m%dT%H%M%SZ")
 
-interpreter_global = {}
-thread_local = threading.local()
-def _emit(msg=None, level=None, **kwargs):
-	"""_emit must be called by an intermediary function (.f_back.f_back)"""
-	log = {}
-	log.update(interpreter_global)
-	log.update(thread_local.__dict__)
-	log.update(kwargs)
-	log['_msg'] = ""
-	log['_time'] = time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())
-	if level:
-		log['_level'] = level
-	if isinstance(msg, BaseException):
-		log['_exception'] = traceback.format_exc(msg)
-	elif msg:
-		caller_globals = inspect.currentframe().f_back.f_back.f_globals
-		caller_locals  = inspect.currentframe().f_back.f_back.f_locals
-		for fgmnt in re.split(r"({[^{}]+})", msg):
-			match = re.match(r"{(.*)}", fgmnt)
-			if match:
-				key = match.group(1)
-				if key not in log:
-					log[key] = eval(key, caller_globals, caller_locals)
-				log['_msg'] += str(log[key])
-			else:
-				log['_msg'] += str(fgmnt)
-	return ": @cee: %s"%json.dumps(log)
+## Core Methods
+def format(record, **overrides):
+    """ Convert a jsonizable dictionary into a structured log event """
+    try:
+        event = {}
+        event.update(process_attributes)
+        event.update(thread_attributes.__dict__)
+        event.update(record)
+        event.update(overrides)
+        for k,v in event.items():
+            try:
+                json.dumps(v)
+            except:
+                event[k] = str(v)
+        return json.dumps(event)
+    except:
+        return traceback.format_exc()
 
-def set_local(key, value):
-	setattr(thread_local, key, value)
+def parse(msg, **kwargs):
+    """ Convert a regular string or formattable string into a structured log record.
+        Safer than log.warn("foo {foo}".format(foo='foo')) since it won't throw
+        an exception somewhere undesirable (like an error handler)
+
+        Essentially a version of python's 'format' call that outputs a structured
+        log record and records exceptions instead of throwing them.
+
+        Example:
+
+        parse('User {name} logged in', name='phillip')
+        # => {'_msg':'User phillip logged in', 'name':'phillip', '_host':...}
+    """
+    record = {'_msg':msg}
+    try:
+        record['_host'] = socket.gethostname()
+        record['_time'] = datetime.utcnow().strftime("%Y-%m-%dT%H:%M:%S.%fZ")
+        record['_tname'] = threading.current_thread().name
+        if isinstance(msg, basestring):
+            # If it looks like a formattable string, try to format it.
+            if '{' in msg and len(kwargs) > 0:
+                record['_msg'] = msg.format(**kwargs)
+        elif isinstance(msg, BaseException):
+            # Python 2 doesn't store traceback in Exception, but it's probably on stack.
+            if sys.exc_info()[1] == msg:
+                record['_msg'] = traceback.format_exc()
+            else:
+                record['_msg'] = repr(msg)
+    except:
+        record['_lorax_exception'] = traceback.format_exc()
+    return record
+
+## Additional Features
+def process(pname):
+    """ It's too hard to inspect the running process name, so we punt and
+        require it be set manually
+
+        Example:
+        #!/usr/bin/python
+
+        import argparse
+
+        parser = argparse.ArgumentParser(description='Site agent for GSOAP")
+        parser.add_argument('-v', '--verbose', action="store_true")
+
+        log.process('gs-agent')
+        log.log_to_syslog()
+        if args.verbose:
+            log.log_to_stdout(level=logging.DEBUG)
+        ...
+
+    """
+    process_attributes['_pname'] = pname
+
 
 class local(object):
-	def __init__(self, fields):
-		self.old = thread_local
-		self.new = fields
-	def __enter__(self):
-		global thread_local
-		thread_local = threading.local()
-		for key, value in self.old.__dict__.items():
-			setattr(thread_local, key, value)
-		for key, value in self.new.items():
-			setattr(thread_local, key, value)
-	def __exit__(self, type, value, traceback):
-		global thread_local
-		thread_local = self.old
+    """ Set thread-local attributes for duration of 'with' call
 
-def debug(msg=None, **kwargs):
-	logger.debug(_emit(msg=msg,level='debug',**kwargs))
-def info(msg=None, **kwargs):
-	logger.info(_emit(msg=msg,level='info',**kwargs))
-def warn(msg=None, **kwargs):
-	logger.warn(_emit(msg=msg,level='warn',**kwargs))
-def error(msg=None, **kwargs):
-	logger.error(_emit(msg=msg,level='error',**kwargs))
-def fatal(msg=None, **kwargs):
-	logger.fatal(_emit(msg=msg,level='fatal',**kwargs))
+        Example:
+
+        def handle_request(request):
+            with lorax.local({'request.id':request.id}):
+                ...
+
+    """
+    def __init__(self, fields):
+        self.existing = thread_attributes
+        self.temp = fields
+    def __enter__(self):
+        global thread_attributes
+        thread_attributes = threading.local()
+        for key, value in self.existing.__dict__.items():
+            setattr(thread_attributes, key, value)
+        for key, value in self.temp.items():
+            setattr(thread_attributes, key, value)
+    def __exit__(self, type, value, traceback):
+        global thread_attributes
+        thread_attributes = self.existing
+
+## Just give me an API I can use!
+def _log(msg, logging_method, **kwargs):
+    msg = format(parse(msg, **kwargs), _level=logging_method.__name__, **kwargs)
+    logging_method(msg)
+    return msg
+# Logging methods should return the string they logged!
+def debug(msg, **kwargs):
+    return _log(msg, logger.debug, **kwargs)
+def info(msg, **kwargs):
+    return _log(msg, logger.info, **kwargs)
+def warn(msg, **kwargs):
+    return _log(msg, logger.warn, **kwargs)
+def error(msg, **kwargs):
+    return _log(msg, logger.error, **kwargs)
+def fatal(msg, **kwargs):
+    return _log(msg, logger.fatal, **kwargs)
+
+## Convenience method for logging to different sources.  Why make so hard, Python?
+def log_to_syslog(host='localhost', port=None, facility=handlers.SysLogHandler.LOG_USER, level=logging.DEBUG):
+    """ Aggressively try to connect to syslog by various means and on various platforms """
+    handler = None
+    if host == 'localhost' and port is None:
+        try:
+            path = next(p for p in ['/dev/log', '/var/run/syslog'] if os.path.exists(p))
+            handler = handlers.SysLogHandler(address=path, facility=facility)
+        except:
+            pass
+
+    if not handler:
+        try:
+            handler = handlers.SysLogHandler(address=(host, port or handlers.SYSLOG_TCP_PORT),
+                                             facility=facility,
+                                             socktype=socket.SOCK_STREAM)
+        except:
+            handler = handlers.SysLogHandler(address=(host, port or handlers.SYSLOG_UDP_PORT),
+                                             facility=facility,
+                                             socktype=socket.SOCK_DGRAM)
+    handler.setLevel(level)
+    formatter = logging.Formatter('lorax: %(message)s')
+    handler.setFormatter(formatter)
+    logger.addHandler(handler)
+    return handler
+
+def log_to_stdout(level=logging.DEBUG, stream=sys.stdout):
+    handler = logging.StreamHandler(stream)
+    handler.setLevel(level)
+    logger.addHandler(handler)
+    return handler
+
+def log_to_file(filename, level=logging.DEBUG):
+    handler = logging.FileHandler(filename)
+    handler.setLevel(level)
+    logger.addHandler(handler)
+    return handler
+
+def log_to_truffula(host='truffula.pvt.spire.com', port=5140, facility=handlers.SysLogHandler.LOG_USER, level=logging.DEBUG):
+    handler = handlers.SysLogHandler(address=(host, port),
+                                     facility=facility,
+                                     socktype=socket.SOCK_DGRAM)
+    handler.setLevel(level)
+    hostname = socket.gethostname()
+    fmt_str = '%(asctime)s ' + hostname + ' lorax: %(message)s'
+    formatter = logging.Formatter(fmt=fmt_str,
+                                  datefmt='%b %d %H:%M:%S')
+
+    handler.setFormatter(formatter)
+    logger.addHandler(handler)
+    return handler
